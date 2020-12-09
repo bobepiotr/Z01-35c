@@ -27,6 +27,7 @@ class Server(SAFRSBase, db.Model):
         mess = []
         if username in messages:
             mess = messages[username]
+            messages[username] = []
         return {'result': mess}
 
     @classmethod
