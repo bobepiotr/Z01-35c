@@ -258,9 +258,9 @@ class ChatWindow:
         self.receiver_name_label.configure(text=f'chat with {self.receiver_name}')
 
     def on_closing(self):
-        # if messagebox.askokcancel("Quit", "Do you want to quit?"):
-        set_status(self.client_id, False)
-        self.root.destroy()
+        if messagebox.askokcancel("Quit", "Do you want to quit?"):
+            set_status(self.client_id, False)
+            self.root.destroy()
 
     def refresh(self):
         self.get_all_users()
