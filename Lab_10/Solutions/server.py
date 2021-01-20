@@ -2,6 +2,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from safrs import SAFRSBase, SAFRSAPI, jsonapi_rpc
 from datetime import datetime as dt
+from flask_socketio import SocketIO
 
 
 db = SQLAlchemy()
@@ -47,13 +48,21 @@ class Message(SAFRSBase, db.Model):
         """
         description: Get message
         args:
-            id: message id
+            id_list: list of ids
+            sender: sender
+            receiver: receiver
         """
-        mess_id = kwargs['id']
-        message_to_mark = db.session.querry(Message).filter(id=mess_id).first()
-        message_to_mark.seen = True
-        db.session.commit()
+        mess_id = kwargs['id_list']
+        sender = kwargs['sender']
+        receiver = kwargs['receiver']
 
+        for mid in mess_id:
+            message_to_mark = db.session.query(Message).filter_by(id=mid).first()
+            if not message_to_mark is None:
+                message_to_mark.read = True
+                db.session.commit()
+
+        socketio.emit('messages_displayed', {'receiver': receiver, 'sender': sender})
         return {'result': 'success'}
 
     @classmethod
@@ -119,11 +128,15 @@ class User(SAFRSBase, db.Model):
                 receiver: "Piotrek2"
                 msg_content: "hello Piotrek2!"
         """
-        msg = Message(receiver=kwargs.get('receiver'), sender=kwargs.get('sender'), content=kwargs.get('msg_content'),
+        receiver = kwargs.get('receiver')
+        sender = kwargs.get('sender')
+        content = kwargs.get('msg_content')
+        msg = Message(receiver=receiver, sender=sender, content=content,
                       read=False, date_time=dt.now())
 
         db.session.add(msg)
         db.session.commit()
+        socketio.emit('new_message', {'receiver': receiver, 'sender': sender})
 
         return {'result': 'success'}
 
@@ -143,6 +156,8 @@ class User(SAFRSBase, db.Model):
             return {'result': 'bad_credentials'}
         else:
             user.is_online = True
+            db.session.commit()
+            socketio.emit('login_or_register')
             return {'result': 'logged_in', 'user_data': {'id': user.id}}
 
     @classmethod
@@ -160,9 +175,28 @@ class User(SAFRSBase, db.Model):
             user = User(name=user_name, password=user_password, is_online=True)
             db.session.add(user)
             db.session.commit()
+            socketio.emit('login_or_register')
             return {'result': 'registered', 'user_data': {'id': user.id}}
         else:
             return {'result': 'nickname_in_use'}
+
+    @classmethod
+    @jsonapi_rpc(http_methods=['POST'])
+    def disconnect_user(cls, user_name):
+        """
+            description: Register or login user
+            args:
+                user_name: "Piotrek"
+                status: False
+        """
+        user = db.session.query(User).filter_by(name=user_name).first()
+        if user is not None:
+            user.is_online = False
+            db.session.commit()
+            socketio.emit('login_or_register')
+            return {'result': 'success'}
+        else:
+            return {'result': 'failure'}
 
 
 def create_api(app, HOST="localhost", PORT=5000, API_PREFIX=""):
@@ -190,12 +224,16 @@ host_name = 'localhost'
 server_app = create_app(host=host_name)
 
 
-def run_server_app():
-    server_app.run(host=host_name)
+#def run_server_app():
+    #server_app.run(host=host_name)
 
+host_name = 'localhost'
+server_app = create_app(host=host_name)
+socketio = SocketIO(server_app)
 
 def main():
-    run_server_app()
+    #run_server_app()
+    socketio.run(server_app)
 
 
 if __name__ == "__main__":

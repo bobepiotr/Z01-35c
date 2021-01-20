@@ -5,6 +5,7 @@ from api_client import send_message, get_users, get_conversation, mark_as_seen, 
     set_status
 import time
 import datetime
+import socketio
 
 default_font = ('Arial', 12)
 big_font = ('Arial', 16)
@@ -12,12 +13,48 @@ big_font = ('Arial', 16)
 
 class ChatWindow:
     def __init__(self, cli_name, cli_id, rec_name):
+        sio.connect('http://127.0.0.1:5000')
+
         set_status(cli_id, True)
         self.client_name = cli_name  # name of the client
         self.client_id = cli_id
         self.receiver_name = rec_name
         self.conversation_list = {}  # list of all messages addressed to client
         self.user_list = []  # list of all users
+
+        @sio.event
+        def login_or_register():
+            print('User logged in')
+            self.get_all_users()
+            self.sort_user_list()
+            self.update_user_list()
+
+        @sio.event
+        def new_message(data):
+            print('new message')
+            receiver = data['receiver']
+            if receiver == self.client_name:
+                sender = data['sender']
+                self.update_all_messages()
+                self.get_all_users()
+                self.sort_user_list()
+                self.update_user_list()
+                if sender == self.receiver_name:
+                    self.update_chat_window()
+
+        @sio.event
+        def messages_displayed(data):
+            print('messages displayed')
+            receiver = data['receiver']
+            sender = data['sender']
+
+            if receiver == self.client_name or sender == self.client_name:
+                self.update_all_messages()
+                self.get_all_users()
+                self.sort_user_list()
+                self.update_user_list()
+                if sender == self.receiver_name:
+                    self.update_chat_window()
 
         self.frame_chat = None  # frame on which i'll display messages
         self.frame_users = None  # frame on which i'll display users
@@ -117,7 +154,7 @@ class ChatWindow:
         Button(self.frame_message, text='send', font=default_font,
                command=lambda: self.send(self.receiver_name, self.message_entry.get())).grid(row=0, column=1)
 
-    def update_chat_window(self):
+    def update_chat_window(self, update_notification=True):
         self.frame_chat.grid_forget()
 
         for widget in self.frame_chat.winfo_children():
@@ -153,7 +190,13 @@ class ChatWindow:
                     message_string += content
                     msg_box_label.configure(text=message_string, bg='cyan')
                     msg_box_label.grid(row=i, sticky='w')
-                    mark_as_seen(id)  # <====================================setting seen parameter to True
+                    #mark_as_seen(id)  # <====================================setting seen parameter to True
+                    if not seen:
+                        messages_to_mark.append(mess_id)
+            if len(messages_to_mark) > 0:
+                mark_as_seen(messages_to_mark, self.client_name, self.receiver_name)
+            elif update_notification:
+                self.update_chat_window(False)
 
             self.frame_chat.update_idletasks()
             chat_canvas = self.frame_chat.master
